@@ -1,0 +1,160 @@
+import bpy
+import numpy as np
+import os
+
+# ============================================================
+#                  CONFIGURATION
+# ============================================================
+
+FBX_DIR = r"C:\Users\s2743922\Desktop\Occlusion\Occlusion_Dataset"
+OUT_DIR = os.path.join(FBX_DIR, "exports_from_blender")
+
+if not os.path.exists(OUT_DIR):
+    os.makedirs(OUT_DIR)
+
+# Skeleton bone list (CoSTAR / Ted_1)
+ROOT_BONE_NAME = "Ted_1:Solving:Hips"
+
+BONE_NAMES_TO_SAVE = [
+    "Ted_1:Solving:Hips",
+    "Ted_1:Solving:Spine",
+    "Ted_1:Solving:Spine1",
+    "Ted_1:Solving:Spine2",
+    "Ted_1:Solving:Spine3",
+    "Ted_1:Solving:Neck",
+    "Ted_1:Solving:Neck1",
+    "Ted_1:Solving:Head",
+    "Ted_1:Solving:HeadEnd",
+
+    "Ted_1:Solving:RightShoulder",
+    "Ted_1:Solving:RightArm",
+    "Ted_1:Solving:RightForeArm",
+    "Ted_1:Solving:RightHand",
+
+    "Ted_1:Solving:LeftShoulder",
+    "Ted_1:Solving:LeftArm",
+    "Ted_1:Solving:LeftForeArm",
+    "Ted_1:Solving:LeftHand",
+
+    "Ted_1:Solving:RightUpLeg",
+    "Ted_1:Solving:RightLeg",
+    "Ted_1:Solving:RightFoot",
+    "Ted_1:Solving:RightToeBase",
+    "Ted_1:Solving:RightToeBaseEnd",
+
+    "Ted_1:Solving:LeftUpLeg",
+    "Ted_1:Solving:LeftLeg",
+    "Ted_1:Solving:LeftFoot",
+    "Ted_1:Solving:LeftToeBase",
+    "Ted_1:Solving:LeftToeBaseEnd",
+]
+
+ROTATION_MODE = 'QUATERNION'  # recommended
+
+# ============================================================
+#                  FUNCTION: IMPORT AND EXTRACT
+# ============================================================
+
+def extract_fbx(fbx_path):
+    print(f"\n=== Processing {os.path.basename(fbx_path)} ===")
+
+    # Wipe scene
+    bpy.ops.object.select_all(action='SELECT')
+    bpy.ops.object.delete()
+
+    # Import FBX
+    try:
+        bpy.ops.import_scene.fbx(filepath=fbx_path)
+    except:
+        print("⚠ Error importing file.")
+        return
+
+    # Find armature
+    armatures = [obj for obj in bpy.data.objects if obj.type == "ARMATURE"]
+    if not armatures:
+        print("⚠ No armature found.")
+        return
+
+    armature = armatures[0]
+    pose_bones = armature.pose.bones
+
+    # Validate bones
+    bones = []
+    for name in BONE_NAMES_TO_SAVE:
+        b = pose_bones.get(name)
+        if b:
+            bones.append(b)
+        else:
+            print(f"⚠ MISSING BONE: {name}")
+
+    if len(bones) == 0:
+        print("❌ No required bones found. Skipping file.")
+        return
+
+    # Set rotation mode
+    bpy.ops.object.mode_set(mode='POSE')
+    for b in bones:
+        b.rotation_mode = ROTATION_MODE
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    # Frame range
+    if armature.animation_data and armature.animation_data.action:
+        action = armature.animation_data.action
+        start = int(action.frame_range[0])
+        end = int(action.frame_range[1])
+    else:
+        start = bpy.context.scene.frame_start
+        end = bpy.context.scene.frame_end
+
+    num_frames = end - start + 1
+    print(f"Frames: {start}–{end}  ({num_frames} total)")
+
+    # Prepare storage
+    translations = []
+    rotations = []
+
+    for frame in range(start, end + 1):
+        bpy.context.scene.frame_set(frame)
+
+        # Root translation
+        root_bone = pose_bones.get(ROOT_BONE_NAME)
+        if not root_bone:
+            print("❌ Root bone missing.")
+            return
+
+        translations.append(list(root_bone.location))
+
+        # Bone rotations
+        frame_rots = []
+        for b in bones:
+            rot = b.rotation_quaternion.copy()
+            frame_rots.append(list(rot))
+        rotations.append(frame_rots)
+
+    # Convert to numpy
+    np_trans = np.array(translations)
+    np_rots = np.array(rotations)
+
+    # Save output
+    base = os.path.splitext(os.path.basename(fbx_path))[0]
+    file_trans = os.path.join(OUT_DIR, f"{base}_root_translation.npy")
+    file_rot = os.path.join(OUT_DIR, f"{base}_bone_rotations.npy")
+
+    np.save(file_trans, np_trans)
+    np.save(file_rot, np_rots)
+
+    print(f"  ✓ Saved {file_trans} {np_trans.shape}")
+    print(f"  ✓ Saved {file_rot} {np_rots.shape}")
+
+
+# ============================================================
+#                  BATCH PROCESS ALL FBX FILES
+# ============================================================
+
+fbx_files = [f for f in os.listdir(FBX_DIR) if f.endswith(".fbx")]
+print(f"\nFound {len(fbx_files)} FBX files in folder.\n")
+
+for f in fbx_files:
+    extract_fbx(os.path.join(FBX_DIR, f))
+
+print("\n=== All files processed ===")

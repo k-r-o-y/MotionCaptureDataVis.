@@ -1,0 +1,23 @@
+import bpy
+import os
+
+FBX_PATH = r"C:\Users\s2743922\Desktop\Occlusion\Occlusion_Dataset\Baseline_1_001.fbx"
+
+# Clear scene
+bpy.ops.object.select_all(action='SELECT')
+bpy.ops.object.delete()
+
+# Import the FBX
+bpy.ops.import_scene.fbx(filepath=FBX_PATH)
+
+# List all armature objects
+armatures = [obj for obj in bpy.data.objects if obj.type == "ARMATURE"]
+print("\nARMATURES FOUND:", [a.name for a in armatures])
+
+if not armatures:
+    print("No armature found in this FBX.")
+else:
+    arm = armatures[0]
+    print("\nBONES IN THIS ARMATURE:")
+    for bone in arm.pose.bones:
+        print(" -", bone.name)
