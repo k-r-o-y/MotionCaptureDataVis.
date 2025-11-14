@@ -1,136 +1,232 @@
-# ==========================================================
-# 3D TELEMETRY MOTION: CIRCLE + JUMPING JACK
-# WITH OCCLUDED LEFT ARM
-# ==========================================================
-
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
-# ----------------------------------------------------------
-# 1) Synthetic motion: root + left-hand trajectory
-# ----------------------------------------------------------
+plt.style.use("dark_background")
 
-F_circle = 240          # frames for circular walk
-F_jump   = 60           # frames for jumping jack
+# ----------------------------------------------------------
+# 1) Motion: circle walk + jumping jack
+# ----------------------------------------------------------
+F_circle = 240          # frames for walking around circle
+F_jump   = 60           # frames for jumping jack at centre
 F        = F_circle + F_jump
 frames   = np.arange(F)
 
 theta  = np.linspace(0, 2*np.pi, F_circle, endpoint=False)
 radius = 2.0
 
-# Root path in XZ (character walking around centre)
+# Root path (pelvis) in XZ plane
 root_circle_x = radius * np.cos(theta)
 root_circle_z = radius * np.sin(theta)
 
-# Jumping jack at centre (small vertical bounce)
 root_jump_x = np.zeros(F_jump)
 root_jump_z = np.zeros(F_jump)
-jump_phase  = np.linspace(0, np.pi, F_jump)   # one hop
-root_jump_y = 0.0 + 0.3 * np.sin(jump_phase) # vertical hop
+
+# Vertical bob while walking; hop during jump
+step_period = 40
+walk_phase = 2*np.pi * np.arange(F_circle) / step_period
+root_circle_y = 1.0 + 0.08 * np.sin(2 * walk_phase)
+
+jump_phase = np.linspace(0, np.pi, F_jump)
+root_jump_y = 1.0 + 0.45 * np.sin(jump_phase)   # one hop
 
 root_x = np.concatenate([root_circle_x, root_jump_x])
+root_y = np.concatenate([root_circle_y, root_jump_y])
 root_z = np.concatenate([root_circle_z, root_jump_z])
-root_y = np.concatenate([np.zeros(F_circle), root_jump_y])
 
 Root = np.stack([root_x, root_y, root_z], axis=1)  # (F,3)
 
-# Left hand: simple model:
-# - while walking: left hand offset from root, swinging a bit
-# - while jumping: hands go from down to up (like a jack)
-
-left_hand = np.zeros_like(Root)
-
-# walking segment
-swing_phase = np.linspace(0, 4*np.pi, F_circle)  # faster swing than step cycle
-for i in range(F_circle):
-    base = Root[i]
-    # offset in local space (very approximate)
-    off_x = -0.6                                # left from body
-    off_y = 0.8 + 0.2 * np.sin(swing_phase[i])  # small up/down swing
-    off_z = 0.3 * np.cos(swing_phase[i])        # tiny forward/back swing
-    left_hand[i] = base + np.array([off_x, off_y, off_z])
-
-# jumping-jack segment: arms move upward
-for j in range(F_jump):
-    i = F_circle + j
-    base = Root[i]
-    t_rel = j / (F_jump - 1 + 1e-8)  # 0→1
-    # arms go from down (~0.5) to up (~1.6)
-    off_x = -0.8
-    off_y = 0.5 + 1.1 * t_rel
-    off_z = 0.0
-    left_hand[i] = base + np.array([off_x, off_y, off_z])
-
 # ----------------------------------------------------------
-# 2) Occlusion model for left arm
-#    - assume sensors roughly along +Z axis
-#    - when subject is on "back half" of circle, left arm is occluded
+# 2) Left-arm occlusion signal
 # ----------------------------------------------------------
-
 left_visible_ratio = np.ones(F)
-
 half_circle = F_circle // 2
-# occluded during back half of circle
+
+# occluded on back half of circle
 left_visible_ratio[half_circle:F_circle] = 0.3 + 0.1*np.random.randn(F_circle-half_circle)
 left_visible_ratio = np.clip(left_visible_ratio, 0.0, 1.0)
 
-# jumping jack visible again
+# visible again during jumping jack
 left_visible_ratio[F_circle:] = 0.95 + 0.03*np.random.randn(F_jump)
 left_visible_ratio = np.clip(left_visible_ratio, 0.0, 1.0)
 
-is_occluded = left_visible_ratio < 0.8  # visibility < 80% ⇒ occluded-ish
+is_occluded = left_visible_ratio < 0.8
 
-# phases for text readout
-phase = np.empty(F, dtype=object)
-phase[:half_circle]        = "Circle (front / facing sensors)"
-phase[half_circle:F_circle]= "Circle (back / occluded side)"
-phase[F_circle:]           = "Jumping jack at centre"
+phase_label = np.empty(F, dtype=object)
+phase_label[:half_circle]         = "Circle (front / facing sensors)"
+phase_label[half_circle:F_circle] = "Circle (back / occluded side)"
+phase_label[F_circle:]            = "Jumping jack at centre"
 
 # ----------------------------------------------------------
-# 3) 3D figure setup
+# 3) Simple stick-figure skeleton (no neck / chest confusion)
 # ----------------------------------------------------------
 
-plt.style.use("dark_background")
+def local_axes(i):
+    """Local side (x), up (y), forward (z) for frame i."""
+    if i < F_circle and (root_x[i]**2 + root_z[i]**2) > 1e-6:
+        r_vec = np.array([root_x[i], 0., root_z[i]])  # radial
+        r_hat = r_vec / np.linalg.norm(r_vec)
+        fwd = np.array([-r_hat[2], 0., r_hat[0]])     # tangent (forward)
+    else:
+        fwd = np.array([0., 0., 1.])
+    side = np.array([1., 0., 0.])
+    up   = np.array([0., 1., 0.])
+    return side, up, fwd
+
+def to_world(root, side, up, fwd, local):
+    lx, ly, lz = local
+    return root + lx*side + ly*up + lz*fwd
+
+def skeleton_frame(i):
+    """
+    Return dict of joint positions for frame i.
+    Keys: root, head,
+          l_sh, r_sh, l_elbow, r_elbow, l_hand, r_hand,
+          l_hip, r_hip, l_knee, r_knee, l_foot, r_foot
+    """
+    root = Root[i]
+    side, up, fwd = local_axes(i)
+
+    joints = {}
+
+    # torso + head
+    torso_height = 0.9
+    head_height  = 0.3
+    head = to_world(root, side, up, fwd, (0.0, torso_height + head_height, 0.0))
+    joints["root"] = root
+    joints["head"] = head
+
+    # shoulders and hips
+    shoulder_y = torso_height
+    hip_y      = 0.1
+    shoulder_half = 0.35
+    hip_half       = 0.25
+
+    l_sh = to_world(root, side, up, fwd, (-shoulder_half, shoulder_y, 0.0))
+    r_sh = to_world(root, side, up, fwd, ( shoulder_half, shoulder_y, 0.0))
+    l_hip = to_world(root, side, up, fwd, (-hip_half, hip_y, 0.0))
+    r_hip = to_world(root, side, up, fwd, ( hip_half, hip_y, 0.0))
+
+    joints["l_sh"] = l_sh
+    joints["r_sh"] = r_sh
+    joints["l_hip"] = l_hip
+    joints["r_hip"] = r_hip
+
+    # gait / jump parameters
+    if i < F_circle:
+        phase = 2*np.pi * i / step_period
+        arm_swing     = 0.6 * np.sin(phase)
+        opp_arm_swing = 0.6 * np.sin(phase + np.pi)
+        leg_swing     = 0.5 * np.sin(phase)
+        opp_leg_swing = 0.5 * np.sin(phase + np.pi)
+        arm_raise = 0.0
+    else:
+        j = i - F_circle
+        t_rel = j / (F_jump - 1 + 1e-8)
+        arm_swing = opp_arm_swing = 0.0
+        arm_raise = 1.3 * t_rel       # arms up for jack
+        leg_swing = 0.2 * t_rel
+        opp_leg_swing = -0.2 * t_rel
+
+    # arms
+    upper_arm = 0.35
+    fore_arm  = 0.35
+
+    # left arm
+    la_dir = (-side + arm_swing*fwd + arm_raise*up)
+    la_dir /= np.linalg.norm(la_dir)
+    l_elbow = l_sh + upper_arm*la_dir
+    l_hand  = l_elbow + fore_arm*la_dir
+
+    # right arm
+    ra_dir = (side + opp_arm_swing*fwd + arm_raise*up)
+    ra_dir /= np.linalg.norm(ra_dir)
+    r_elbow = r_sh + upper_arm*ra_dir
+    r_hand  = r_elbow + fore_arm*ra_dir
+
+    joints["l_elbow"], joints["l_hand"] = l_elbow, l_hand
+    joints["r_elbow"], joints["r_hand"] = r_elbow, r_hand
+
+    # legs (very simple)
+    upper_leg = 0.45
+    lower_leg = 0.45
+
+    ll_dir = (-0.2*up + leg_swing*fwd)
+    rl_dir = (-0.2*up + opp_leg_swing*fwd)
+    ll_dir /= np.linalg.norm(ll_dir)
+    rl_dir /= np.linalg.norm(rl_dir)
+
+    l_knee = l_hip + upper_leg*ll_dir
+    r_knee = r_hip + upper_leg*rl_dir
+
+    # feet roughly under
+    l_foot = to_world(root, side, up, fwd, (-hip_half, -0.9, 0.2))
+    r_foot = to_world(root, side, up, fwd, ( hip_half, -0.9,-0.2))
+
+    joints["l_knee"], joints["r_knee"] = l_knee, r_knee
+    joints["l_foot"], joints["r_foot"] = l_foot, r_foot
+
+    return joints
+
+# Precompute all joints once so we’re not recalculating in the loop
+joints_per_frame = [skeleton_frame(i) for i in range(F)]
+left_hand_traj = np.array([j["l_hand"] for j in joints_per_frame])
+
+# ----------------------------------------------------------
+# 4) Figure + artists
+# ----------------------------------------------------------
 fig = plt.figure(figsize=(9, 8))
 ax = fig.add_subplot(111, projection="3d")
-ax.set_title("3D Telemetry Motion — Circle + Jumping Jack with Left-Arm Occlusion")
+ax.set_title("Walking Body + Jumping Jack with Left-Arm Occlusion")
 
-# bounds (cube so it doesn't squash)
-allX = np.r_[Root[:,0], left_hand[:,0]]
-allY = np.r_[Root[:,1], left_hand[:,1]]
-allZ = np.r_[Root[:,2], left_hand[:,2]]
-xmin,xmax = allX.min(), allX.max()
-ymin,ymax = allY.min(), allY.max()
-zmin,zmax = allZ.min(), allZ.max()
+# cube bounds
+allX = np.r_[Root[:,0], left_hand_traj[:,0]]
+allY = np.r_[Root[:,1], left_hand_traj[:,1]]
+allZ = np.r_[Root[:,2], left_hand_traj[:,2]]
+xmin,xmax = allX.min()-1.5, allX.max()+1.5
+ymin,ymax = allY.min()-1.5, allY.max()+1.5
+zmin,zmax = allZ.min()-1.5, allZ.max()+1.5
 cx,cy,cz = (xmin+xmax)/2, (ymin+ymax)/2, (zmin+zmax)/2
-r = max(xmax-xmin, ymax-ymin, zmax-zmin) * 0.6
+r = max(xmax-xmin, ymax-ymin, zmax-zmin)/2
+
 ax.set_xlim(cx-r, cx+r)
 ax.set_ylim(cy-r, cy+r)
 ax.set_zlim(cz-r, cz+r)
-ax.invert_yaxis()  # mocap-style Y-down if you want; comment out if confusing
+ax.invert_yaxis()
 
-# soft ground plane
+# ground plane
 gx = np.linspace(cx-r, cx+r, 30)
 gz = np.linspace(cz-r, cz+r, 30)
 GX, GZ = np.meshgrid(gx, gz)
-GY = np.full_like(GX, ymin-0.05*(ymax-ymin))
-ax.plot_surface(GX, GY, GZ, alpha=0.10, color="#888888", edgecolor="none", zorder=-10)
+GY = np.full_like(GX, ymin+0.1)
+ax.plot_surface(GX, GY, GZ, alpha=0.1, color="#666666", edgecolor="none")
 
 ax.set_xlabel("X (sideways)")
 ax.set_ylabel("Y (up)")
 ax.set_zlabel("Z (forward)")
 
-# root trail & marker
-root_trail, = ax.plot([], [], [], lw=2, color="white", alpha=0.7, label="Root path")
-root_dot,   = ax.plot([], [], [], marker="o", markersize=7, color="white")
+# connections – only joints that *definitely* exist
+bones = [
+    ("l_foot","l_knee"), ("l_knee","l_hip"), ("l_hip","root"),
+    ("r_foot","r_knee"), ("r_knee","r_hip"), ("r_hip","root"),
+    ("root","head"),
+    ("l_sh","l_elbow"), ("l_elbow","l_hand"),
+    ("r_sh","r_elbow"), ("r_elbow","r_hand"),
+]
+left_arm_bones = {("l_sh","l_elbow"), ("l_elbow","l_hand")}
 
-# left-hand trail & marker
-lh_trail,   = ax.plot([], [], [], lw=2, color="#aaaaaa", alpha=0.6, label="Left hand path")
-lh_dot,     = ax.plot([], [], [], marker="o", markersize=9, linestyle="none")
+bone_lines = {}
+for a,b in bones:
+    color = "limegreen" if (a,b) in left_arm_bones else "white"
+    line, = ax.plot([], [], [], lw=2.5, color=color)
+    bone_lines[(a,b)] = line
 
-# status text
+root_trail, = ax.plot([], [], [], lw=1.5, color="white", alpha=0.7)
+lh_trail,   = ax.plot([], [], [], lw=1.5, color="#aaaaaa", alpha=0.6)
+
+lh_marker,  = ax.plot([], [], [], marker="o", markersize=9, linestyle="none")
+
 status = ax.text2D(
     0.02, 0.95, "",
     transform=ax.transAxes,
@@ -139,62 +235,75 @@ status = ax.text2D(
     bbox=dict(facecolor="black", alpha=0.5, edgecolor="none")
 )
 
-ax.legend(loc="upper left")
+ax.legend(handles=[
+    plt.Line2D([], [], color="limegreen", lw=3, label="Left arm visible"),
+    plt.Line2D([], [], color="red",      lw=3, label="Left arm occluded"),
+], loc="upper left")
 
 # ----------------------------------------------------------
-# 4) Animation functions
+# 5) Animation
 # ----------------------------------------------------------
-
 FPS = 30
 
 def init():
+    for line in bone_lines.values():
+        line.set_data([], [])
+        line.set_3d_properties([])
     root_trail.set_data([], [])
     root_trail.set_3d_properties([])
     lh_trail.set_data([], [])
     lh_trail.set_3d_properties([])
-    root_dot.set_data([], [])
-    root_dot.set_3d_properties([])
-    lh_dot.set_data([], [])
-    lh_dot.set_3d_properties([])
+    lh_marker.set_data([], [])
+    lh_marker.set_3d_properties([])
     status.set_text("")
-    return root_trail, lh_trail, root_dot, lh_dot, status
+    return list(bone_lines.values()) + [root_trail, lh_trail, lh_marker, status]
 
 def update(i):
-    # trails up to frame i
+    joints = joints_per_frame[i]
+
+    # bones
+    for (a,b), line in bone_lines.items():
+        pa, pb = joints[a], joints[b]
+        xs = [pa[0], pb[0]]
+        ys = [pa[1], pb[1]]
+        zs = [pa[2], pb[2]]
+        line.set_data(xs, ys)
+        line.set_3d_properties(zs)
+
+        if (a,b) in left_arm_bones:
+            line.set_color("red" if is_occluded[i] else "limegreen")
+
+    # trails
     root_trail.set_data(Root[:i+1,0], Root[:i+1,1])
     root_trail.set_3d_properties(Root[:i+1,2])
 
-    lh_trail.set_data(left_hand[:i+1,0], left_hand[:i+1,1])
-    lh_trail.set_3d_properties(left_hand[:i+1,2])
+    lh_trail.set_data(left_hand_traj[:i+1,0], left_hand_traj[:i+1,1])
+    lh_trail.set_3d_properties(left_hand_traj[:i+1,2])
 
-    # current markers
-    root_dot.set_data([Root[i,0]], [Root[i,1]])
-    root_dot.set_3d_properties([Root[i,2]])
-
-    lh_dot.set_data([left_hand[i,0]], [left_hand[i,1]])
-    lh_dot.set_3d_properties([left_hand[i,2]])
-
-    # colour left hand by occlusion
+    # left hand marker
+    lh = joints["l_hand"]
+    lh_marker.set_data([lh[0]], [lh[1]])
+    lh_marker.set_3d_properties([lh[2]])
     if is_occluded[i]:
-        face, edge, label = "red", "darkred", "LEFT ARM OCCLUDED"
+        lh_marker.set_markerfacecolor("red")
+        lh_marker.set_markeredgecolor("darkred")
+        vis_label = "LEFT ARM OCCLUDED"
     else:
-        face, edge, label = "limegreen", "darkgreen", "Left arm visible"
+        lh_marker.set_markerfacecolor("limegreen")
+        lh_marker.set_markeredgecolor("darkgreen")
+        vis_label = "Left arm visible"
 
-    lh_dot.set_markerfacecolor(face)
-    lh_dot.set_markeredgecolor(edge)
-
-    # camera orbit for telemetry feel
-    az = 45 + 35*np.sin(2*np.pi*i / (F*1.3))
+    # camera orbit
+    az = 40 + 35*np.sin(2*np.pi*i / (F*1.3))
     el = 20 + 5*np.sin(2*np.pi*i / (F*2.0))
     ax.view_init(elev=el, azim=az)
 
-    # status text (telemetry)
     status.set_text(
-        f"Frame {i+1:03d}/{F} | {phase[i]}\n"
-        f"Left-arm visibility: {left_visible_ratio[i]:.2f}  ({label})"
+        f"Frame {i+1:03d}/{F} | {phase_label[i]}\n"
+        f"Left arm visibility: {left_visible_ratio[i]:.2f}  ({vis_label})"
     )
 
-    return root_trail, lh_trail, root_dot, lh_dot, status
+    return list(bone_lines.values()) + [root_trail, lh_trail, lh_marker, status]
 
 anim = FuncAnimation(
     fig, update, init_func=init,
@@ -204,7 +313,7 @@ anim = FuncAnimation(
 plt.tight_layout()
 plt.show()
 
-# Optional saving (if you want a video/gif):
-# anim.save("3d_telemetry_circle_jump_leftarm_occlusion.mp4", dpi=150, fps=FPS)
+# Optional saving:
+# anim.save("walking_body_leftarm_occlusion_fixed.mp4", dpi=150, fps=FPS)
 # from matplotlib.animation import PillowWriter
-# anim.save("3d_telemetry_circle_jump_leftarm_occlusion.gif", dpi=120, fps=FPS, writer=PillowWriter())
+# anim.save("walking_body_leftarm_occlusion_fixed.gif", dpi=120, fps=FPS, writer=PillowWriter())
