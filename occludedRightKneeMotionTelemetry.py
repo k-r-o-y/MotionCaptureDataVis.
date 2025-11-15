@@ -2,6 +2,7 @@
 # TELEMETRY: MOTION + RIGHT-KNEE OCCLUSION
 #   - circle walk + jumping jack
 #   - right knee occluded at start & on right-hand side
+#   (layout fixed: large circle plot + horizontal colourbar)
 # ==========================================================
 
 import numpy as np
@@ -76,7 +77,7 @@ rk_occluded = right_knee_vis < 0.8
 
 # phase labels / states
 state = np.zeros(F, dtype=int)  # 0 = initial occ
-state[n_start_occ:F_circle] = 1  # circle visible
+state[n_start_occ:F_circle] = 1  # circle mostly visible
 state[idx_right_side] = 2        # circle right-side occ
 state[F_circle:] = 3             # jumping jack
 
@@ -89,24 +90,25 @@ state_labels = [
 state_colors = ["#e41a1c", "#4daf4a", "#ff7f00", "#377eb8"]
 
 # ----------------------------------------------------------
-# 3) Telemetry figure
+# 3) Telemetry figure (layout & scaling fixed)
 # ----------------------------------------------------------
 fig, (ax_path, ax_speed, ax_vis, ax_state) = plt.subplots(
-    4, 1, figsize=(12, 13),
-    gridspec_kw={"height_ratios": [2.0, 1.2, 1.2, 0.6]},
-    sharex=False
+    4, 1,
+    figsize=(13, 10),
+    gridspec_kw={"height_ratios": [2.2, 1.2, 1.2, 0.6]},
+    constrained_layout=True
 )
 
 # ---------- Top-down path + occlusion markers ----------
 t_norm = frames / (F - 1 + 1e-8)
 sc = ax_path.scatter(
     root_x, root_z,
-    c=t_norm, cmap="viridis", s=18, alpha=0.4, edgecolors="none"
+    c=t_norm, cmap="viridis", s=22, alpha=0.7, edgecolors="none"
 )
-ax_path.set_aspect("equal", "box")
+ax_path.set_aspect("equal", adjustable="datalim")
 ax_path.set_xlabel("X (sideways)")
 ax_path.set_ylabel("Z (forward)")
-ax_path.set_title("Top-Down Motion Path with Right-Knee Occlusions")
+ax_path.set_title("Top-Down Motion Path with Right-Knee Occlusions", pad=10)
 
 # start / end markers
 ax_path.scatter(root_x[0], root_z[0],
@@ -119,24 +121,36 @@ ax_path.scatter(root_x[-1], root_z[-1],
 # highlight frames where right knee is occluded
 ax_path.scatter(
     root_x[rk_occluded], root_z[rk_occluded],
-    facecolors="none", edgecolors="red", s=80, linewidths=1.8,
+    facecolors="none", edgecolors="red", s=90, linewidths=1.8,
     label="Right knee occluded"
 )
 
-cb = fig.colorbar(sc, ax=ax_path, pad=0.01)
+# horizontal colourbar under the circle
+cb = fig.colorbar(
+    sc, ax=ax_path,
+    orientation="horizontal",
+    pad=0.18,
+    fraction=0.06
+)
 cb.set_label("Normalised time (0 = start, 1 = end)")
-ax_path.legend(loc="upper left")
+
+ax_path.legend(loc="upper left", fontsize=9, frameon=True)
 
 # ---------- Speed telemetry ----------
 ax_speed.plot(frames, speed, color="#1f78b4", linewidth=2)
 ax_speed.set_ylabel("Root speed\n(units/frame)")
-ax_speed.set_title("Telemetry: Motion + Right-Knee Occlusion")
+ax_speed.set_title("Telemetry: Motion + Right-Knee Occlusion", pad=8)
 ax_speed.set_xlim(0, F-1)
 
-# shade circle vs jump
 ax_speed.axvspan(0, F_circle-1, color="#cccccc", alpha=0.15, label="Circle")
-ax_speed.axvspan(F_circle, F-1, color="#ffbf00", alpha=0.15, label="Jumping jack")
-ax_speed.legend(loc="upper right")
+ax_speed.axvspan(F_circle, F-1, color="#ffefa0", alpha=0.4, label="Jumping jack")
+
+ax_speed.legend(
+    loc="upper left",
+    bbox_to_anchor=(0.01, 1.02),
+    borderaxespad=0,
+    fontsize=9
+)
 
 # ---------- Visibility telemetry ----------
 ax_vis.plot(frames, right_knee_vis, color="black", linewidth=2)
@@ -144,14 +158,19 @@ ax_vis.set_xlim(0, F-1)
 ax_vis.set_ylim(-0.05, 1.05)
 ax_vis.set_ylabel("Right knee\nvisibility")
 
-# shaded occlusion region
 ax_vis.fill_between(
     frames, 0, right_knee_vis,
     where=rk_occluded,
     color="red", alpha=0.25,
     label="Right knee occluded"
 )
-ax_vis.legend(loc="upper right")
+
+ax_vis.legend(
+    loc="upper left",
+    bbox_to_anchor=(0.01, 1.02),
+    borderaxespad=0,
+    fontsize=9
+)
 
 # ---------- Phase / state strip ----------
 state_strip = state[np.newaxis, :]
@@ -165,8 +184,12 @@ handles = [
     plt.matplotlib.patches.Patch(color=state_colors[i], label=state_labels[i])
     for i in range(4)
 ]
-ax_state.legend(handles=handles, loc="center",
-                bbox_to_anchor=(0.5, -0.6), ncol=2, frameon=False)
+ax_state.legend(
+    handles=handles,
+    loc="center",
+    ncol=2,
+    fontsize=9,
+    frameon=False
+)
 
-plt.tight_layout()
 plt.show()
