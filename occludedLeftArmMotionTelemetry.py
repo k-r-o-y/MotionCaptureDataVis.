@@ -1,5 +1,6 @@
 # ==========================================================
 # FULL OCCLUSION PATH VISUALIZATION + ANIMATION
+# (layout + circle plot made more legible)
 # ==========================================================
 
 import numpy as np
@@ -26,19 +27,15 @@ frames   = np.arange(F)
 theta = np.linspace(0, 2*np.pi, F_circle, endpoint=False)
 radius = 2.0
 
-# circular section
 root_circle_x = radius * np.cos(theta)
 root_circle_z = radius * np.sin(theta)
 
-# back to centre for jump: hold at origin
 root_jump_x = np.zeros(F_jump)
 root_jump_z = np.zeros(F_jump)
 
-# combine
 root_x = np.concatenate([root_circle_x, root_jump_x])
 root_z = np.concatenate([root_circle_z, root_jump_z])
 
-# pack into Root (Y just 0 for this viz)
 Root = np.stack([root_x, np.zeros_like(root_x), root_z], axis=1)
 
 # ==========================================================
@@ -49,32 +46,29 @@ Root = np.stack([root_x, np.zeros_like(root_x), root_z], axis=1)
 # ==========================================================
 
 left_visible_ratio = np.ones(F)
-
 half_circle = F_circle // 2
 
-# strong occlusions on second half of circle
-left_visible_ratio[half_circle:F_circle] = 0.4   # only ~40% markers tracked
+left_visible_ratio[half_circle:F_circle] = 0.4   # ~40% markers tracked
 
-# add a bit of noise so it looks less synthetic
 left_visible_ratio[:F_circle] += 0.05 * np.random.randn(F_circle)
 left_visible_ratio = np.clip(left_visible_ratio, 0.0, 1.0)
 
-# during jumping jack: high visibility
 left_visible_ratio[F_circle:] = 0.95 + 0.03 * np.random.randn(F_jump)
 left_visible_ratio = np.clip(left_visible_ratio, 0.0, 1.0)
 
-# treat anything below 95% as "occluded"
 is_occluded = left_visible_ratio < 0.95
 
 # ==========================================================
-# 3) STATIC FIGURE: PATH + OCCLUSION TIMELINE
+# 3) STATIC FIGURE: PATH + OCCLUSION TIMELINE (layout fixed)
 # ==========================================================
 
 fig, (ax_path, ax_timeline) = plt.subplots(
-    2, 1, figsize=(11, 10), gridspec_kw={"height_ratios": [3, 1]}
+    2, 1,
+    figsize=(12, 8),
+    gridspec_kw={"height_ratios": [2.2, 1.0]},
+    constrained_layout=True,
 )
 
-# --- Top-down motion path coloured by time ---
 t_norm = frames / (F - 1)
 sc = ax_path.scatter(
     Root[:, 0], Root[:, 2],
@@ -83,7 +77,6 @@ sc = ax_path.scatter(
 )
 ax_path.plot(Root[:, 0], Root[:, 2], color="grey", alpha=0.5, linewidth=1)
 
-# highlight occluded frames
 ax_path.scatter(
     Root[is_occluded, 0],
     Root[is_occluded, 2],
@@ -94,7 +87,6 @@ ax_path.scatter(
     label="Left arm occluded"
 )
 
-# mark start and end (jumping jack at end)
 ax_path.scatter(
     Root[0, 0], Root[0, 2],
     marker="*", s=140, color="white", edgecolors="black",
@@ -106,14 +98,21 @@ ax_path.scatter(
     zorder=5, label="End (jumping jack)"
 )
 
-ax_path.set_aspect("equal", "box")
+ax_path.set_aspect("equal", adjustable="datalim")
 ax_path.set_xlabel("X (sideways)")
 ax_path.set_ylabel("Z (forward)")
-ax_path.set_title("Top-Down Motion Path with Left-Arm Occlusions")
+ax_path.set_title("Top-Down Motion Path with Left-Arm Occlusions", pad=10)
 
-cbar = fig.colorbar(sc, ax=ax_path, pad=0.01)
+# horizontal colourbar under the circle
+cbar = fig.colorbar(
+    sc, ax=ax_path,
+    orientation="horizontal",
+    pad=0.18,
+    fraction=0.06
+)
 cbar.set_label("Normalised time (0 = start, 1 = end)")
-ax_path.legend(loc="upper left")
+
+ax_path.legend(loc="upper left", fontsize=9, frameon=True)
 
 # --- Left-arm visibility timeline ---
 ax_timeline.plot(frames, left_visible_ratio, color="black", linewidth=2)
@@ -127,37 +126,38 @@ ax_timeline.fill_between(
 ax_timeline.set_ylim(-0.05, 1.05)
 ax_timeline.set_xlabel("Frame")
 ax_timeline.set_ylabel("Left arm visibility\n(fraction of markers)")
-ax_timeline.set_title("Left-Arm Occlusion Timeline")
+ax_timeline.set_title("Left-Arm Occlusion Timeline", pad=6)
 
-# highlight the jumping-jack segment
 ax_timeline.axvspan(
     F_circle, F - 1,
     color="gold", alpha=0.15,
     label="Jumping jack segment"
 )
 
-ax_timeline.legend(loc="lower right")
+ax_timeline.legend(loc="lower right", fontsize=9)
 
-plt.tight_layout()
 plt.show()
 
 # ==========================================================
 # 4) ANIMATED FIGURE: MOVING MARKER + TIMELINE CURSOR
+#    (same style, horizontal colourbar)
 # ==========================================================
 
 fig_anim, (axA, axB) = plt.subplots(
-    2, 1, figsize=(11, 10), gridspec_kw={"height_ratios": [3, 1]}
+    2, 1,
+    figsize=(12, 8),
+    gridspec_kw={"height_ratios": [2.2, 1.0]},
+    constrained_layout=True,
 )
 
-# --- Background for path (lighter than static for contrast) ---
+# --- Background for path ---
 scA = axA.scatter(
     Root[:, 0], Root[:, 2],
     c=t_norm, cmap="viridis",
-    s=20, alpha=0.4, edgecolors="none"
+    s=22, alpha=0.4, edgecolors="none"
 )
 axA.plot(Root[:, 0], Root[:, 2], color="grey", alpha=0.3, linewidth=1)
 
-# background occlusion rings
 axA.scatter(
     Root[is_occluded, 0],
     Root[is_occluded, 2],
@@ -180,14 +180,20 @@ axA.scatter(
     label="End (jumping jack)"
 )
 
-axA.set_aspect("equal", "box")
+axA.set_aspect("equal", adjustable="datalim")
 axA.set_xlabel("X (sideways)")
 axA.set_ylabel("Z (forward)")
-axA.set_title("Animated Motion Path with Live Left-Arm Occlusion")
+axA.set_title("Animated Motion Path with Live Left-Arm Occlusion", pad=10)
 
-cbarA = fig_anim.colorbar(scA, ax=axA, pad=0.01)
+cbarA = fig_anim.colorbar(
+    scA, ax=axA,
+    orientation="horizontal",
+    pad=0.18,
+    fraction=0.06
+)
 cbarA.set_label("Normalised time (0 = start, 1 = end)")
-axA.legend(loc="upper left")
+
+axA.legend(loc="upper left", fontsize=9, frameon=True)
 
 # --- Background timeline ---
 axB.plot(frames, left_visible_ratio, color="black", linewidth=1.5, alpha=0.7)
@@ -200,13 +206,13 @@ axB.fill_between(
 axB.set_ylim(-0.05, 1.05)
 axB.set_xlabel("Frame")
 axB.set_ylabel("Left arm visibility\n(fraction of markers)")
-axB.set_title("Left-Arm Occlusion Timeline (Live Cursor)")
+axB.set_title("Left-Arm Occlusion Timeline (Live Cursor)", pad=6)
 axB.axvspan(
     F_circle, F - 1,
     color="gold", alpha=0.15,
     label="Jumping jack segment"
 )
-axB.legend(loc="lower right")
+axB.legend(loc="lower right", fontsize=9)
 
 # --- Animated elements ---
 current_dot, = axA.plot([], [], marker="o", markersize=10,
@@ -214,7 +220,7 @@ current_dot, = axA.plot([], [], marker="o", markersize=10,
 time_cursor = axB.axvline(frames[0], color="blue", linewidth=2)
 status_text = axA.text(
     0.02, 0.95, "", transform=axA.transAxes,
-    va="top", ha="left", fontsize=11,
+    va="top", ha="left", fontsize=10,
     bbox=dict(facecolor="white", alpha=0.6, edgecolor="none")
 )
 
@@ -253,9 +259,4 @@ anim = FuncAnimation(
     frames=F, interval=40, blit=False
 )
 
-plt.tight_layout()
 plt.show()
-
-# Optional saving:
-# anim.save("motion_path_left_arm_occlusion.mp4", dpi=150, fps=25)
-# anim.save("motion_path_left_arm_occlusion.gif", dpi=120, fps=25, writer="pillow")
