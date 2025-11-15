@@ -260,3 +260,7 @@ anim = FuncAnimation(
 )
 
 plt.show()
+
+# Optional saving:
+# anim.save("motion_path_left_arm_occlusion.mp4", dpi=150, fps=25)
+# anim.save("motion_path_left_arm_occlusion.gif", dpi=120, fps=25, writer="pillow")
