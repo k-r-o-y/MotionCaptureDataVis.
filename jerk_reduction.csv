@@ -1,0 +1,19 @@
+Sequence,Jerk Before,Jerk After,Improvement
+Baseline_2_left_elbow_002,6.7e-05,4.3e-05,2.4e-05
+Baseline_2_left_elbow_003,3.7e-05,3e-05,6.999999999999997e-06
+Baseline_2_left_wrist_001,4.4e-05,3.3e-05,1.0999999999999996e-05
+Baseline_2_left_wrist_003,5.7e-05,4.4e-05,1.3000000000000004e-05
+Baseline_2_right_elbow_001,7.3e-05,3.9e-05,3.4e-05
+Baseline_2_right_elbow_002,3.8e-05,2.6e-05,1.2000000000000004e-05
+Baseline_2_right_elbow_003,5.1e-05,3.9e-05,1.2e-05
+Baseline_2_right_left_elbow_001,5e-05,3.6e-05,1.4000000000000001e-05
+Baseline_2_right_wrist_001,5.3e-05,3.9e-05,1.4000000000000001e-05
+Baseline_2_right_wrist_002,4.9e-05,3.8e-05,1.0999999999999996e-05
+Baseline_2_right_wrist_003,5.7e-05,4.5e-05,1.2e-05
+Baseline_3_left_knee_002,5.5e-05,4.1e-05,1.4000000000000001e-05
+Baseline_3_left_knee_003,8e-05,5.6e-05,2.4000000000000007e-05
+Baseline_3_right_knee_001,4.8e-05,4e-05,7.999999999999998e-06
+Baseline_3_right_knee_002,5.9e-05,4.7e-05,1.2e-05
+Baseline_3_right_knee_003,5.6e-05,4.3e-05,1.2999999999999998e-05
+Baseline_variation_003,9.3e-05,7.4e-05,1.9e-05
+Baseline_variation_004,0.000197,0.000172,2.4999999999999984e-05

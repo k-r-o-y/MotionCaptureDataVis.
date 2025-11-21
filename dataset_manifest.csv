@@ -1,0 +1,28 @@
+fbx_name,status,root_translation_shape,bone_rotations_shape
+Baseline1_full_left_arm_009,missing_npy,None,None
+Baseline1_full_right_arm_008,converted,"(2919, 3)","(2919, 14, 4)"
+Baseline_1_001,converted,"(2903, 3)","(2903, 27, 4)"
+Baseline_1_002,converted,"(3651, 3)","(3651, 27, 4)"
+Baseline_1_003,converted,"(2707, 3)","(2707, 27, 4)"
+Baseline_2_left_elbow_002,converted,"(2696, 3)","(2696, 27, 4)"
+Baseline_2_left_elbow_003,converted,"(2980, 3)","(2980, 27, 4)"
+Baseline_2_left_wrist_001,converted,"(2700, 3)","(2700, 27, 4)"
+Baseline_2_left_wrist_002,missing_npy,None,None
+Baseline_2_left_wrist_003,converted,"(2578, 3)","(2578, 27, 4)"
+Baseline_2_right_elbow_001,converted,"(2752, 3)","(2752, 27, 4)"
+Baseline_2_right_elbow_002,converted,"(3186, 3)","(3186, 27, 4)"
+Baseline_2_right_elbow_003,converted,"(2482, 3)","(2482, 27, 4)"
+Baseline_2_right_left_elbow_001,converted,"(2501, 3)","(2501, 27, 4)"
+Baseline_2_right_wrist_001,converted,"(2378, 3)","(2378, 27, 4)"
+Baseline_2_right_wrist_002,converted,"(2464, 3)","(2464, 27, 4)"
+Baseline_2_right_wrist_003,converted,"(2588, 3)","(2588, 27, 4)"
+Baseline_3_left_knee_001,missing_npy,None,None
+Baseline_3_left_knee_002,converted,"(2680, 3)","(2680, 27, 4)"
+Baseline_3_left_knee_003,converted,"(2462, 3)","(2462, 27, 4)"
+Baseline_3_right_knee_001,converted,"(2670, 3)","(2670, 27, 4)"
+Baseline_3_right_knee_002,converted,"(2450, 3)","(2450, 27, 4)"
+Baseline_3_right_knee_003,converted,"(2440, 3)","(2440, 27, 4)"
+Baseline_variation_001,missing_npy,None,None
+Baseline_variation_002,missing_npy,None,None
+Baseline_variation_003,converted,"(3164, 3)","(3164, 27, 4)"
+Baseline_variation_004,converted,"(1458, 3)","(1458, 27, 4)"

@@ -1,0 +1,4 @@
+Joint Group,Precision,Recall,F1-score
+Elbow,0.84,0.8,0.82
+Wrist,0.82,0.77,0.79
+Knee,0.81,0.79,0.8
