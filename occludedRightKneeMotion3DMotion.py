@@ -1,15 +1,19 @@
+# Install dependencies (run this cell once)
+!pip install numpy matplotlib pillow
+
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
+from matplotlib.animation import FuncAnimation, PillowWriter
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+from IPython.display import Image, display
 
 plt.style.use("dark_background")
 
 # ----------------------------------------------------------
 # 1) Motion: circle walk + jumping jack
 # ----------------------------------------------------------
-F_circle = 240          # frames for walking around circle
-F_jump   = 60           # frames for jumping jack at centre
+F_circle = 160          # frames for walking around circle
+F_jump   = 40           # frames for jumping jack at centre
 F        = F_circle + F_jump
 frames   = np.arange(F)
 
@@ -25,10 +29,10 @@ root_jump_z = np.zeros(F_jump)
 
 # Vertical bob while walking; hop during jump
 step_period = 40
-walk_phase = 2*np.pi * np.arange(F_circle) / step_period
+walk_phase  = 2*np.pi * np.arange(F_circle) / step_period
 root_circle_y = 1.0 + 0.08 * np.sin(2 * walk_phase)
 
-jump_phase = np.linspace(0, np.pi, F_jump)
+jump_phase  = np.linspace(0, np.pi, F_jump)
 root_jump_y = 1.0 + 0.45 * np.sin(jump_phase)   # one hop
 
 root_x = np.concatenate([root_circle_x, root_jump_x])
@@ -38,45 +42,30 @@ root_z = np.concatenate([root_circle_z, root_jump_z])
 Root = np.stack([root_x, root_y, root_z], axis=1)  # (F,3)
 
 # ----------------------------------------------------------
-# 2) Right-knee occlusion signal
-#    - strong occlusion at the *start*
-#    - later occlusion only on the right-hand side of circle (X > 0)
-#    - jumping jack mostly visible
+# 2) Left-wrist occlusion signal
 # ----------------------------------------------------------
-np.random.seed(0)
+np.random.seed(1)
 
-right_knee_vis = np.ones(F)
+left_wrist_vis = np.ones(F)
 
-# (a) initial occlusion: first ~40 frames
-n_start_occ = 40
-right_knee_vis[:n_start_occ] = 0.3 + 0.1*np.random.randn(n_start_occ)
-
-# (b) occlusion on the right-hand side of the circle
-#     we define "right" as X > 0.5*radius, after the initial occlusion period
-idx_right_side = np.where(
-    (np.arange(F_circle) >= n_start_occ) &
-    (root_circle_x > 0.5*radius)
+idx_left_side = np.where(
+    (np.arange(F_circle) > 30) & (root_circle_x < -0.5*radius)
 )[0]
 
-right_knee_vis[idx_right_side] = 0.4 + 0.15*np.random.randn(len(idx_right_side))
+left_wrist_vis[idx_left_side] = 0.35 + 0.15*np.random.randn(len(idx_left_side))
+left_wrist_vis[F_circle:] = 0.96 + 0.03*np.random.randn(F_jump)
 
-# (c) jumping jack: mostly visible
-right_knee_vis[F_circle:] = 0.95 + 0.03*np.random.randn(F_jump)
-
-# clamp into [0,1]
-right_knee_vis = np.clip(right_knee_vis, 0.0, 1.0)
-
-rk_occluded = right_knee_vis < 0.8
+left_wrist_vis = np.clip(left_wrist_vis, 0.0, 1.0)
+lw_occluded = left_wrist_vis < 0.8
 
 phase_label = np.empty(F, dtype=object)
-phase_label[:] = "Circle (front / facing sensors)"
-phase_label[idx_right_side] = "Circle (right side / occluded knee)"
+phase_label[:] = "Circle (general motion)"
+phase_label[idx_left_side] = "Circle (left side / wrist occluded)"
 phase_label[F_circle:] = "Jumping jack at centre"
 
 # ----------------------------------------------------------
 # 3) Simple stick-figure skeleton
 # ----------------------------------------------------------
-
 def local_axes(i):
     """Local side (x), up (y), forward (z) for frame i."""
     if i < F_circle and (root_x[i]**2 + root_z[i]**2) > 1e-6:
@@ -86,7 +75,7 @@ def local_axes(i):
     else:
         fwd = np.array([0., 0., 1.])
     side = np.array([1., 0., 0.])
-    up   = np.array([0., 1., 0.])
+    up   = np.array([1., 0., 0.]) * 0 + np.array([0., 1., 0.])  # just [0,1,0]
     return side, up, fwd
 
 def to_world(root, side, up, fwd, local):
@@ -94,25 +83,17 @@ def to_world(root, side, up, fwd, local):
     return root + lx*side + ly*up + lz*fwd
 
 def skeleton_frame(i):
-    """
-    Return dict of joint positions for frame i.
-    Keys: root, head,
-          l_sh, r_sh, l_elbow, r_elbow, l_hand, r_hand,
-          l_hip, r_hip, l_knee, r_knee, l_foot, r_foot
-    """
     root = Root[i]
     side, up, fwd = local_axes(i)
 
     joints = {}
 
-    # torso + head
     torso_height = 0.9
     head_height  = 0.3
     head = to_world(root, side, up, fwd, (0.0, torso_height + head_height, 0.0))
     joints["root"] = root
     joints["head"] = head
 
-    # shoulders and hips
     shoulder_y = torso_height
     hip_y      = 0.1
     shoulder_half = 0.35
@@ -128,7 +109,6 @@ def skeleton_frame(i):
     joints["l_hip"] = l_hip
     joints["r_hip"] = r_hip
 
-    # gait / jump parameters
     if i < F_circle:
         phase = 2*np.pi * i / step_period
         arm_swing     = 0.6 * np.sin(phase)
@@ -140,11 +120,10 @@ def skeleton_frame(i):
         j = i - F_circle
         t_rel = j / (F_jump - 1 + 1e-8)
         arm_swing = opp_arm_swing = 0.0
-        arm_raise = 1.3 * t_rel       # arms up for jack
+        arm_raise = 1.3 * t_rel
         leg_swing = 0.2 * t_rel
         opp_leg_swing = -0.2 * t_rel
 
-    # arms
     upper_arm = 0.35
     fore_arm  = 0.35
 
@@ -161,7 +140,6 @@ def skeleton_frame(i):
     joints["l_elbow"], joints["l_hand"] = l_elbow, l_hand
     joints["r_elbow"], joints["r_hand"] = r_elbow, r_hand
 
-    # legs
     upper_leg = 0.45
     lower_leg = 0.45
 
@@ -181,21 +159,19 @@ def skeleton_frame(i):
 
     return joints
 
-# Precompute joints for all frames
 joints_per_frame = [skeleton_frame(i) for i in range(F)]
-right_knee_traj = np.array([j["r_knee"] for j in joints_per_frame])
+left_hand_traj   = np.array([j["l_hand"] for j in joints_per_frame])
 
 # ----------------------------------------------------------
 # 4) Figure + artists
 # ----------------------------------------------------------
-fig = plt.figure(figsize=(9, 8))
+fig = plt.figure(figsize=(6, 6))
 ax = fig.add_subplot(111, projection="3d")
-ax.set_title("Walking Body + Jumping Jack with Right-Knee Occlusion (shifted in time/space)")
+ax.set_title("Walking Body + Jumping Jack with Left-Wrist Occlusion")
 
-# cube bounds
-allX = np.r_[Root[:,0], right_knee_traj[:,0]]
-allY = np.r_[Root[:,1], right_knee_traj[:,1]]
-allZ = np.r_[Root[:,2], right_knee_traj[:,2]]
+allX = np.r_[Root[:,0], left_hand_traj[:,0]]
+allY = np.r_[Root[:,1], left_hand_traj[:,1]]
+allZ = np.r_[Root[:,2], left_hand_traj[:,2]]
 xmin,xmax = allX.min()-1.5, allX.max()+1.5
 ymin,ymax = allY.min()-1.5, allY.max()+1.5
 zmin,zmax = allZ.min()-1.5, allZ.max()+1.5
@@ -207,18 +183,10 @@ ax.set_ylim(cy-r, cy+r)
 ax.set_zlim(cz-r, cz+r)
 ax.invert_yaxis()
 
-# ground plane
-gx = np.linspace(cx-r, cx+r, 30)
-gz = np.linspace(cz-r, cz+r, 30)
-GX, GZ = np.meshgrid(gx, gz)
-GY = np.full_like(GX, ymin+0.1)
-ax.plot_surface(GX, GY, GZ, alpha=0.1, color="#666666", edgecolor="none")
-
 ax.set_xlabel("X (sideways)")
 ax.set_ylabel("Y (up)")
 ax.set_zlabel("Z (forward)")
 
-# bone connections
 bones = [
     ("l_foot","l_knee"), ("l_knee","l_hip"), ("l_hip","root"),
     ("r_foot","r_knee"), ("r_knee","r_hip"), ("r_hip","root"),
@@ -227,36 +195,34 @@ bones = [
     ("r_sh","r_elbow"), ("r_elbow","r_hand"),
 ]
 
-right_leg_bones = {("r_foot","r_knee"), ("r_knee","r_hip")}
-
 bone_lines = {}
 for a,b in bones:
-    color = "limegreen" if (a,b) in right_leg_bones else "white"
-    line, = ax.plot([], [], [], lw=2.5, color=color)
+    line, = ax.plot([], [], [], lw=2.5, color="white")
     bone_lines[(a,b)] = line
 
-root_trail, = ax.plot([], [], [], lw=1.5, color="white", alpha=0.7)
-rk_trail,   = ax.plot([], [], [], lw=1.5, color="#aaaaaa", alpha=0.6)
-
-rk_marker,  = ax.plot([], [], [], marker="o", markersize=9, linestyle="none")
+root_trail, = ax.plot([], [], [], lw=1.0, color="white", alpha=0.6)
+lw_trail,   = ax.plot([], [], [], lw=1.0, color="#aaaaaa", alpha=0.6)
+lw_marker,  = ax.plot([], [], [], marker="o", markersize=6, linestyle="none")
 
 status = ax.text2D(
     0.02, 0.95, "",
     transform=ax.transAxes,
     va="top", ha="left",
-    fontsize=10,
+    fontsize=8,
     bbox=dict(facecolor="black", alpha=0.5, edgecolor="none")
 )
 
 ax.legend(handles=[
-    plt.Line2D([], [], color="limegreen", lw=3, label="Right knee visible"),
-    plt.Line2D([], [], color="red",      lw=3, label="Right knee occluded"),
+    plt.Line2D([], [], color="limegreen", marker="o", linestyle="none",
+               markersize=6, label="Left wrist visible"),
+    plt.Line2D([], [], color="red", marker="o", linestyle="none",
+               markersize=6, label="Left wrist occluded"),
 ], loc="upper left")
 
 # ----------------------------------------------------------
 # 5) Animation
 # ----------------------------------------------------------
-FPS = 30
+FPS = 20
 
 def init():
     for line in bone_lines.values():
@@ -264,17 +230,16 @@ def init():
         line.set_3d_properties([])
     root_trail.set_data([], [])
     root_trail.set_3d_properties([])
-    rk_trail.set_data([], [])
-    rk_trail.set_3d_properties([])
-    rk_marker.set_data([], [])
-    rk_marker.set_3d_properties([])
+    lw_trail.set_data([], [])
+    lw_trail.set_3d_properties([])
+    lw_marker.set_data([], [])
+    lw_marker.set_3d_properties([])
     status.set_text("")
-    return list(bone_lines.values()) + [root_trail, rk_trail, rk_marker, status]
+    return list(bone_lines.values()) + [root_trail, lw_trail, lw_marker, status]
 
 def update(i):
     joints = joints_per_frame[i]
 
-    # bones
     for (a,b), line in bone_lines.items():
         pa, pb = joints[a], joints[b]
         xs = [pa[0], pb[0]]
@@ -283,40 +248,35 @@ def update(i):
         line.set_data(xs, ys)
         line.set_3d_properties(zs)
 
-        if (a,b) in right_leg_bones:
-            line.set_color("red" if rk_occluded[i] else "limegreen")
-
-    # trails
     root_trail.set_data(Root[:i+1,0], Root[:i+1,1])
     root_trail.set_3d_properties(Root[:i+1,2])
 
-    rk_trail.set_data(right_knee_traj[:i+1,0], right_knee_traj[:i+1,1])
-    rk_trail.set_3d_properties(right_knee_traj[:i+1,2])
+    lw_trail.set_data(left_hand_traj[:i+1,0], left_hand_traj[:i+1,1])
+    lw_trail.set_3d_properties(left_hand_traj[:i+1,2])
 
-    # right knee marker
-    rk = joints["r_knee"]
-    rk_marker.set_data([rk[0]], [rk[1]])
-    rk_marker.set_3d_properties([rk[2]])
-    if rk_occluded[i]:
-        rk_marker.set_markerfacecolor("red")
-        rk_marker.set_markeredgecolor("darkred")
-        vis_label = "RIGHT KNEE OCCLUDED"
+    lh = joints["l_hand"]
+    lw_marker.set_data([lh[0]], [lh[1]])
+    lw_marker.set_3d_properties([lh[2]])
+
+    if lw_occluded[i]:
+        lw_marker.set_markerfacecolor("red")
+        lw_marker.set_markeredgecolor("darkred")
+        vis_label = "LEFT WRIST OCCLUDED"
     else:
-        rk_marker.set_markerfacecolor("limegreen")
-        rk_marker.set_markeredgecolor("darkgreen")
-        vis_label = "Right knee visible"
+        lw_marker.set_markerfacecolor("limegreen")
+        lw_marker.set_markeredgecolor("darkgreen")
+        vis_label = "Left wrist visible"
 
-    # camera orbit
     az = 40 + 35*np.sin(2*np.pi*i / (F*1.3))
     el = 20 + 5*np.sin(2*np.pi*i / (F*2.0))
     ax.view_init(elev=el, azim=az)
 
     status.set_text(
         f"Frame {i+1:03d}/{F} | {phase_label[i]}\n"
-        f"Right knee visibility: {right_knee_vis[i]:.2f}  ({vis_label})"
+        f"Left wrist visibility: {left_wrist_vis[i]:.2f}  ({vis_label})"
     )
 
-    return list(bone_lines.values()) + [root_trail, rk_trail, rk_marker, status]
+    return list(bone_lines.values()) + [root_trail, lw_trail, lw_marker, status]
 
 anim = FuncAnimation(
     fig, update, init_func=init,
@@ -324,9 +284,11 @@ anim = FuncAnimation(
 )
 
 plt.tight_layout()
-plt.show()
 
-# Optional saving:
-# anim.save("walking_body_rightknee_occlusion_shifted.mp4", dpi=150, fps=FPS)
-# from matplotlib.animation import PillowWriter
-# anim.save("walking_body_rightknee_occlusion_shifted.gif", dpi=120, fps=FPS, writer=PillowWriter())
+gif_name = "walking_body_leftwrist_occlusion.gif"
+writer = PillowWriter(fps=FPS)
+anim.save(gif_name, writer=writer, dpi=80)
+
+# NOTE: we no longer close the figure here to avoid the AttributeError
+
+display(Image(filename=gif_name))
