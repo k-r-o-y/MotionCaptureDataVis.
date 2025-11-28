@@ -1,5 +1,5 @@
-# If you don't have these yet, uncomment and run once:
-# !pip install numpy matplotlib
+# If needed once per notebook:
+# !pip install matplotlib pillow
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -7,6 +7,7 @@ from matplotlib.animation import FuncAnimation, PillowWriter
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 from IPython.display import Image, display
 
+plt.ioff()                 # avoid extra static plots
 plt.style.use("dark_background")
 
 # ----------------------------------------------------------
@@ -43,30 +44,31 @@ Root = np.stack([root_x, root_y, root_z], axis=1)  # (F,3)
 
 # ----------------------------------------------------------
 # 2) Right-knee occlusion signal
-#    - occlusion only affects the RIGHT knee marker
-#    - occluded on RIGHT side of circle (X > +0.5*radius)
-#    - visible otherwise, including jumping jack
+#    - affects only the right knee marker
+#    - occluded on "back" half of circle: Z < 0 (behind camera)
 # ----------------------------------------------------------
-np.random.seed(2)
+np.random.seed(1)
 
-rk_visibility = np.ones(F)
+right_knee_vis = np.ones(F)
 
-# frames while walking on the right side, skip first ~20 frames
-idx_circle = np.arange(F_circle)
-idx_right_side = idx_circle[(idx_circle > 20) & (root_circle_x > 0.5 * radius)]
+# indices where root is behind camera (Z < 0) during circle phase
+idx_back_half = np.where(
+    (np.arange(F_circle) > 30) & (root_circle_z < 0.0)
+)[0]
 
-# those frames: partially occluded (with noise)
-rk_visibility[idx_right_side] = 0.30 + 0.15 * np.random.randn(len(idx_right_side))
+# make those frames partially occluded with some noise
+right_knee_vis[idx_back_half] = 0.35 + 0.15*np.random.randn(len(idx_back_half))
 
-# jumping jack: mostly visible
-rk_visibility[F_circle:] = 0.96 + 0.03 * np.random.randn(F_jump)
+# jumping jack phase: mostly visible
+right_knee_vis[F_circle:] = 0.96 + 0.03*np.random.randn(F_jump)
 
-rk_visibility = np.clip(rk_visibility, 0.0, 1.0)
-rk_occluded = rk_visibility < 0.8
+right_knee_vis = np.clip(right_knee_vis, 0.0, 1.0)
+rk_occluded = right_knee_vis < 0.8
 
+# labels for phases
 phase_label = np.empty(F, dtype=object)
 phase_label[:] = "Circle (general motion)"
-phase_label[idx_right_side] = "Circle (right side / knee occluded)"
+phase_label[idx_back_half] = "Circle (back half / right knee occluded)"
 phase_label[F_circle:] = "Jumping jack at centre"
 
 # ----------------------------------------------------------
@@ -143,13 +145,11 @@ def skeleton_frame(i):
     upper_arm = 0.35
     fore_arm  = 0.35
 
-    # left arm
     la_dir = (-side + arm_swing*fwd + arm_raise*up)
     la_dir /= np.linalg.norm(la_dir)
     l_elbow = l_sh + upper_arm*la_dir
     l_hand  = l_elbow + fore_arm*la_dir
 
-    # right arm
     ra_dir = (side + opp_arm_swing*fwd + arm_raise*up)
     ra_dir /= np.linalg.norm(ra_dir)
     r_elbow = r_sh + upper_arm*ra_dir
@@ -180,7 +180,7 @@ def skeleton_frame(i):
 
 # Precompute all frames
 joints_per_frame = [skeleton_frame(i) for i in range(F)]
-right_knee_traj = np.array([j["r_knee"] for j in joints_per_frame])
+right_knee_traj  = np.array([j["r_knee"] for j in joints_per_frame])
 
 # ----------------------------------------------------------
 # 4) Figure + artists
@@ -189,15 +189,15 @@ fig = plt.figure(figsize=(9, 8))
 ax = fig.add_subplot(111, projection="3d")
 ax.set_title("Walking Body + Jumping Jack with Right-Knee Occlusion")
 
-# bounds (force to 1D with ravel to avoid shape issues)
-allX = np.concatenate([Root[:, 0].ravel(), right_knee_traj[:, 0].ravel()])
-allY = np.concatenate([Root[:, 1].ravel(), right_knee_traj[:, 1].ravel()])
-allZ = np.concatenate([Root[:, 2].ravel(), right_knee_traj[:, 2].ravel()])
-xmin, xmax = allX.min() - 1.5, allX.max() + 1.5
-ymin, ymax = allY.min() - 1.5, allY.max() + 1.5
-zmin, zmax = allZ.min() - 1.5, allZ.max() + 1.5
-cx, cy, cz = (xmin + xmax) / 2, (ymin + ymax) / 2, (zmin + zmax) / 2
-r = max(xmax - xmin, ymax - ymin, zmax - zmin) / 2
+# bounds
+allX = np.r_[Root[:,0], right_knee_traj[:,0]]
+allY = np.r_[Root[:,1], right_knee_traj[:,1]]
+allZ = np.r_[Root[:,2], right_knee_traj[:,2]]
+xmin,xmax = allX.min()-1.5, allX.max()+1.5
+ymin,ymax = allY.min()-1.5, allY.max()+1.5
+zmin,zmax = allZ.min()-1.5, allZ.max()+1.5
+cx,cy,cz = (xmin+xmax)/2, (ymin+ymax)/2, (zmin+zmax)/2
+r = max(xmax-xmin, ymax-ymin, zmax-zmin)/2
 
 ax.set_xlim(cx-r, cx+r)
 ax.set_ylim(cy-r, cy+r)
@@ -215,7 +215,6 @@ ax.set_xlabel("X (sideways)")
 ax.set_ylabel("Y (up)")
 ax.set_zlabel("Z (forward)")
 
-# bones – all white; occlusion is only reflected at the right-knee marker
 bones = [
     ("l_foot","l_knee"), ("l_knee","l_hip"), ("l_hip","root"),
     ("r_foot","r_knee"), ("r_knee","r_hip"), ("r_hip","root"),
@@ -233,7 +232,7 @@ for a,b in bones:
 root_trail, = ax.plot([], [], [], lw=1.5, color="white", alpha=0.7)
 rk_trail,   = ax.plot([], [], [], lw=1.5, color="#aaaaaa", alpha=0.6)
 
-# right-knee marker
+# right knee marker
 rk_marker,  = ax.plot([], [], [], marker="o", markersize=9, linestyle="none")
 
 # HUD
@@ -253,7 +252,7 @@ ax.legend(handles=[
 ], loc="upper left")
 
 # ----------------------------------------------------------
-# 5) Animation
+# 5) Animation → GIF only
 # ----------------------------------------------------------
 FPS = 30
 
@@ -274,7 +273,7 @@ def update(i):
     joints = joints_per_frame[i]
 
     # bones
-    for (a,b), line in bone_lines.items():
+    for (a, b), line in bone_lines.items():
         pa, pb = joints[a], joints[b]
         xs = [pa[0], pb[0]]
         ys = [pa[1], pb[1]]
@@ -283,13 +282,13 @@ def update(i):
         line.set_3d_properties(zs)
 
     # trails
-    root_trail.set_data(Root[:i+1,0], Root[:i+1,1])
-    root_trail.set_3d_properties(Root[:i+1,2])
+    root_trail.set_data(Root[:i+1, 0], Root[:i+1, 1])
+    root_trail.set_3d_properties(Root[:i+1, 2])
 
-    rk_trail.set_data(right_knee_traj[:i+1,0], right_knee_traj[:i+1,1])
-    rk_trail.set_3d_properties(right_knee_traj[:i+1,2])
+    rk_trail.set_data(right_knee_traj[:i+1, 0], right_knee_traj[:i+1, 1])
+    rk_trail.set_3d_properties(right_knee_traj[:i+1, 2])
 
-    # right-knee marker
+    # right knee marker
     rk = joints["r_knee"]
     rk_marker.set_data([rk[0]], [rk[1]])
     rk_marker.set_3d_properties([rk[2]])
@@ -310,21 +309,23 @@ def update(i):
 
     status.set_text(
         f"Frame {i+1:03d}/{F} | {phase_label[i]}\n"
-        f"Right knee visibility: {rk_visibility[i]:.2f}  ({vis_label})"
+        f"Right knee visibility: {right_knee_vis[i]:.2f}  ({vis_label})"
     )
 
     return list(bone_lines.values()) + [root_trail, rk_trail, rk_marker, status]
 
+
 anim = FuncAnimation(
     fig, update, init_func=init,
-    frames=F, interval=1000//FPS, blit=False
+    frames=F, interval=1000 // FPS, blit=False
 )
 
-# ----------------------------------------------------------
-# 6) Save as GIF and display inline in the notebook
-# ----------------------------------------------------------
 gif_name = "right_knee_occlusion.gif"
 writer = PillowWriter(fps=FPS)
 anim.save(gif_name, writer=writer, dpi=80)
 
+# Close the figure so Jupyter doesn't add a static image
+plt.close(fig)
+
+# Display just the GIF
 display(Image(filename=gif_name))
