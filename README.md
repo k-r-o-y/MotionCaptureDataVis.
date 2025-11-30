@@ -10,15 +10,15 @@ Ghost Motion is a design-informatics exploration into occlusion, missing motion-
 
 This repository contains:
 
-	•	The final report (PDF)  ￼
+	•	The final report (PDF) in submissionFolder
   
-	•	The presentation slides
+	•	The presentation slides in submissionFolder
   
-	•	The creative narrative animation video (Data Forensic Artifact)
+	•	The creative narrative animation video (Data Forensic Artifact) in submissionFolder
   
-	•	All Python code used for data telemetry, occlusion simulation, 3D visualisation, and real-time demo systems
+	•	All Python code used for data telemetry, occlusion simulation, 3D visualisation, and real-time demo systems in submissionFolder
   
-	•	Additional research materials not included in the final submitted package
+	•	Additional research materials not included in the final submitted package outside submissionFolder
 
 Final Submission Package
 
@@ -26,7 +26,7 @@ The following items represent the official coursework submission:
 
 ✅ 1. Final Report (PDF)
 
-Located in /final_report/.
+Located in /submissionFolder/.
 This includes:
 
 	•	Literature grounding
@@ -43,14 +43,19 @@ This includes:
 
 ✅ 2. Presentation Slides
 
-Full slide deck used during the in-class presentation.
+Located in /submissionFolder/.
+This includes: Full slide deck used during the in-class presentation.
 
 ✅ 3. Creative Narrative Animation Video
 
-A stylized data-forensic film illustrating workplace characters with missing or occluded motion data.
+Located in /submissionFolder/.
+This includes: A stylized data-forensic film illustrating workplace characters with missing or occluded motion data.
 The video reinforces the interpretive perspective of the project by blending design storytelling with telemetry insights.
 
 ✅ 4. Telemetry + 3D Visualisation Code (Right Knee Occlusion)
+
+Located in /submissionFolder/.
+This includes:
 
 Python scripts/Jupyter notebooks containing:
 
